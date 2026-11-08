@@ -4,10 +4,10 @@ import { getLevelInfo, grantXp, maxOrderSlots } from '../../utils/progression.js
 import { noteProgress } from '../../utils/progressHooks.js';
 
 const TYPES = [
-  { id: 'standard', weight: 52, seconds: 42, mult: 1.9, xp: 1.4 },
-  { id: 'bulk', weight: 24, seconds: 110, mult: 2.4, xp: 1.8, minLevel: 2 },
-  { id: 'premium', weight: 14, seconds: 70, mult: 3.35, xp: 2.3, minLevel: 4 },
-  { id: 'timed', weight: 14, seconds: 30, mult: 2.75, xp: 2, minLevel: 3 },
+  { id: 'standard', weight: 52, seconds: 42, mult: 1.35, xp: 1.4 },
+  { id: 'bulk', weight: 24, seconds: 110, mult: 1.65, xp: 1.8, minLevel: 2 },
+  { id: 'premium', weight: 14, seconds: 70, mult: 2.2, xp: 2.3, minLevel: 4 },
+  { id: 'timed', weight: 14, seconds: 30, mult: 1.85, xp: 2, minLevel: 3 },
 ];
 
 function fail(reason) {

@@ -44,6 +44,7 @@ function label(scene, value, size, color, bold = true) {
     fontSize: `${size}px`,
     color,
     fontStyle: bold ? 'bold' : 'normal',
+    resolution: scene.res || 1,
   });
 }
 
@@ -101,14 +102,18 @@ export default class FactoryScene extends Phaser.Scene {
     this.maxScroll = 0;
     this.layoutSig = '';
     this.quality = 'high';
+    this.res = 1;
+    this.artScale = 1;
     this.pools = {};
     this.truckClock = 0;
     this.dock = null;
   }
 
   create() {
+    this.res = factoryBridge.resolution || 1;
+    this.artScale = this.res > 1.25 ? 2 : 1;
     this.floor = this.add.graphics().setDepth(0);
-    this.cameras.main.setBackgroundColor('#171717');
+    this.cameras.main.setBackgroundColor('#171717').setOrigin(0, 0).setZoom(this.res);
     try {
       paintAll(this);
     } catch (error) {
@@ -121,7 +126,7 @@ export default class FactoryScene extends Phaser.Scene {
     });
     this.input.on('pointermove', (pointer) => {
       if (!pointer.isDown || this.downY == null) return;
-      const dy = pointer.y - this.downY;
+      const dy = (pointer.y - this.downY) / this.res;
       if (Math.abs(dy) > 12) this.dragged = true;
       if (this.dragged) {
         this.cameras.main.scrollY = Phaser.Math.Clamp(this.downScroll - dy, 0, this.maxScroll);
@@ -202,12 +207,17 @@ export default class FactoryScene extends Phaser.Scene {
     const unlocked = LINES.filter((def) => snapshot.lines[def.id]?.unlocked).map((def) => def.id).join(',');
     const locked = this.nextLocked()?.id || '';
     const inset = Math.round(factoryBridge.insetBottom || 0);
-    const signature = `${Math.round(this.scale.width)}x${Math.round(this.scale.height)}:${theme}:${unlocked}:${locked}:${inset}:${factoryBridge.edge}:${this.quality}`;
+    const view = this.viewSize();
+    const signature = `${Math.round(view.width)}x${Math.round(view.height)}:${theme}:${unlocked}:${locked}:${inset}:${factoryBridge.edge}:${this.quality}`;
     if (signature !== this.layoutSig) {
       this.layoutSig = signature;
       this.layout();
     }
     this.refreshLabels();
+  }
+
+  viewSize() {
+    return { width: this.scale.width / this.res, height: this.scale.height / this.res };
   }
 
   nextLocked() {
@@ -329,8 +339,9 @@ export default class FactoryScene extends Phaser.Scene {
   }
 
   layout() {
-    const width = Math.max(320, this.scale.width || 360);
-    const height = Math.max(220, this.scale.height || 320);
+    const view = this.viewSize();
+    const width = Math.max(320, view.width || 360);
+    const height = Math.max(220, view.height || 320);
     const theme = THEMES[this.snapshot?.shop?.theme] || THEMES.dusk;
     this.cameras.main.setBackgroundColor(theme.wall);
     const inset = Math.max(0, factoryBridge.insetBottom || 0);
@@ -395,8 +406,8 @@ export default class FactoryScene extends Phaser.Scene {
     const storeW = Math.round(mw * 0.72);
     const free = Math.max(0, aw - workerSlot - mw * 2 - storeW);
     const pressX = left + workerSlot;
-    const finX = pressX + mw + free / 2;
-    const storeX = finX + mw + free / 2;
+    const finX = Math.round(pressX + mw + free / 2);
+    const storeX = Math.round(finX + mw + free / 2);
     const machineY = baseY - mh;
 
     const g = row.chrome;
@@ -1002,6 +1013,7 @@ export default class FactoryScene extends Phaser.Scene {
       fontStyle: 'bold',
       stroke: '#111111',
       strokeThickness: 4,
+      resolution: this.res,
     }).setDepth(12).setOrigin(0.5, 1);
     this.tweens.add({
       targets: text,
@@ -1067,7 +1079,7 @@ export default class FactoryScene extends Phaser.Scene {
 
   levelUp(level) {
     if (!level) return;
-    const cam = this.cameras.main;
+    const cam = this.viewSize();
     const cx = cam.width / 2;
     const cy = Math.min(cam.height * 0.4, 260);
     const veil = this.add.rectangle(0, 0, cam.width, cam.height, 0xffc400, 0.12).setOrigin(0).setScrollFactor(0).setDepth(20);
@@ -1077,6 +1089,7 @@ export default class FactoryScene extends Phaser.Scene {
       fontSize: '28px',
       color: '#ffc400',
       fontStyle: 'bold',
+      resolution: this.res,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(22).setScale(0.6);
     this.tweens.add({ targets: veil, alpha: 0, duration: 700, onComplete: () => veil.destroy() });
     this.tweens.add({ targets: title, scale: 1, duration: 280, ease: 'Back.easeOut' });
@@ -1094,7 +1107,7 @@ export default class FactoryScene extends Phaser.Scene {
 
   glowScreen() {
     if (this.quality === 'low') return;
-    const cam = this.cameras.main;
+    const cam = this.viewSize();
     const veil = this.add.rectangle(0, 0, cam.width, cam.height, 0xffc400, 0.1).setOrigin(0).setScrollFactor(0).setDepth(20);
     this.tweens.add({ targets: veil, alpha: 0, duration: 600, onComplete: () => veil.destroy() });
   }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Phaser from 'phaser';
 import { Activity, Boxes, Factory, Gauge } from 'lucide-react';
 import { LINES, TUTORIAL } from '../data/content.js';
@@ -10,6 +10,15 @@ import { averageCondition, bottleneckFix } from '../utils/growth.js';
 import { formatMoney, formatRate } from '../utils/formatter.js';
 import { FactoryDocks } from './BottomNavigation.jsx';
 
+const MAX_RESOLUTION = 2.5;
+
+function canvasResolution(quality, dpr) {
+  const ratio = Math.max(1, Math.min(dpr || 1, MAX_RESOLUTION));
+  if (quality === 'low') return 1;
+  if (quality === 'medium') return Math.min(ratio, 1.5);
+  return ratio;
+}
+
 export default function FactoryView() {
   const hostRef = useRef(null);
   const overviewRef = useRef(null);
@@ -18,6 +27,15 @@ export default function FactoryView() {
   const { state, registerScene, tap, sellAll, dismissTutorial, setTab } = useGame();
   tapRef.current = tap;
   tabRef.current = setTab;
+  const [dpr, setDpr] = useState(() => window.devicePixelRatio || 1);
+  const resolution = canvasResolution(state.settings?.quality, dpr);
+
+  useEffect(() => {
+    const query = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    const update = () => setDpr(window.devicePixelRatio || 1);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, [dpr]);
 
   useEffect(() => {
     const parent = hostRef.current;
@@ -26,17 +44,25 @@ export default function FactoryView() {
     factoryBridge.openTab = (id) => tabRef.current?.(id);
     factoryBridge.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     factoryBridge.ready = (scene) => registerScene(scene);
+    factoryBridge.resolution = resolution;
     const phone = window.matchMedia('(max-width: 720px)');
     factoryBridge.edge = phone.matches ? 16 : 74;
-    const width = Math.max(320, parent.clientWidth || 640);
-    const height = Math.max(220, parent.clientHeight || 360);
+    const width = Math.floor(Math.max(320, parent.clientWidth || 640));
+    const height = Math.floor(Math.max(220, parent.clientHeight || 360));
     let game;
+    const pinStyle = (cssWidth, cssHeight, target = game) => {
+      const canvas = target?.canvas;
+      if (!canvas) return;
+      canvas.style.width = `${cssWidth}px`;
+      canvas.style.height = `${cssHeight}px`;
+    };
     const fit = () => {
-      const nextWidth = parent.clientWidth;
-      const nextHeight = parent.clientHeight;
+      const nextWidth = Math.floor(parent.clientWidth);
+      const nextHeight = Math.floor(parent.clientHeight);
       if (!game || nextWidth < 40 || nextHeight < 40) return;
       factoryBridge.edge = phone.matches ? 16 : 74;
-      game.scale.resize(Math.floor(nextWidth), Math.floor(nextHeight));
+      game.scale.resize(Math.round(nextWidth * resolution), Math.round(nextHeight * resolution));
+      pinStyle(nextWidth, nextHeight);
     };
     try {
       game = new Phaser.Game({
@@ -47,11 +73,13 @@ export default function FactoryView() {
         audio: { noAudio: true },
         scale: {
           mode: Phaser.Scale.NONE,
-          width,
-          height,
+          width: Math.round(width * resolution),
+          height: Math.round(height * resolution),
+          zoom: 1 / resolution,
         },
-        render: { antialias: true },
+        render: { antialias: true, pixelArt: false, roundPixels: false },
         fps: { target: 60 },
+        callbacks: { postBoot: (booted) => pinStyle(width, height, booted) },
         scene: FactoryScene,
       });
     } catch (error) {
@@ -73,7 +101,7 @@ export default function FactoryView() {
       registerScene(null);
       game?.destroy(true);
     };
-  }, [registerScene]);
+  }, [registerScene, resolution]);
 
   useEffect(() => {
     const node = overviewRef.current;

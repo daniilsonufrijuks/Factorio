@@ -3,7 +3,9 @@ import { ACHIEVEMENTS, RESEARCH_MAP, ROOM_MAP, ROOMS } from '../../data/growth.j
 import { makeStarterOrder } from '../state.js';
 import { getSellPrice } from '../../utils/economy.js';
 import { getLevelInfo } from '../../utils/progression.js';
+import { formatMoney } from '../../utils/formatter.js';
 import {
+  PRESTIGE_EARNINGS,
   buildMissions,
   canPrestige,
   crewCost,
@@ -184,7 +186,7 @@ export function buyPrestigeUpgrade(state, events, key) {
 }
 
 export function prestigeRun(state, events) {
-  if (!canPrestige(state)) return fail('Reach level 10 or $25K lifetime earnings before prestiging.');
+  if (!canPrestige(state)) return fail(`Reach level 10 or ${formatMoney(PRESTIGE_EARNINGS)} lifetime earnings before prestiging.`);
   const gain = prestigeGain(state);
   state.prestige.points += gain;
   state.prestige.runs += 1;

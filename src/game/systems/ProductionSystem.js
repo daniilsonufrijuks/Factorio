@@ -64,8 +64,8 @@ export function simulate(state, dt, events) {
       noteProgress(state, 'earn', money);
     }
     noteProgress(state, 'produce', count);
-    grantXp(state, count * def.tier, events);
-    state.research.points += count / 4;
+    grantXp(state, count * def.tier * 0.35, events);
+    state.research.points += count / 10;
     if (state.tutorialStep < 1) state.tutorialStep = 1;
     events.push({
       type: 'produce',

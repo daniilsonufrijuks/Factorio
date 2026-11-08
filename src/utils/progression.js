@@ -1,7 +1,7 @@
 import { LINES } from '../data/content.js';
 
 export function xpForLevel(level) {
-  return Math.floor(80 * Math.pow(Math.max(1, level), 1.42));
+  return Math.floor(640 * Math.pow(Math.max(1, level), 1.72));
 }
 
 export function getLevelInfo(totalXp) {

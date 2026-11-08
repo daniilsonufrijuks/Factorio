@@ -73,7 +73,7 @@ export function getCycleTime(state, lineId, options = {}) {
   const speedLevel = options.speed ?? line.speed;
   const conveyorLevel = options.conveyor ?? line.conveyor;
   const bonuses = options.bonuses || getBonuses(state, lineId);
-  const speedMult = (1 + speedLevel * 0.2) * (1 + conveyorLevel * 0.08) * (1 + bonuses.speed);
+  const speedMult = (1 + speedLevel * 0.12) * (1 + conveyorLevel * 0.05) * (1 + bonuses.speed);
   let cycle = def.baseCycle / Math.max(0.2, speedMult);
   const boostOn = options.boost !== false && (state.shop?.boostUntil || 0) > Date.now();
   if (boostOn) cycle /= 2;
@@ -88,7 +88,7 @@ export function getSellPrice(state, lineId, options = {}) {
   const valueLevel = options.value ?? line.value;
   const automation = options.automation ?? line.automation;
   const bonuses = options.bonuses || getBonuses(state, lineId);
-  const quality = 1 + valueLevel * 0.24;
+  const quality = 1 + valueLevel * 0.14;
   const crew = 1 + bonuses.value;
   const auto = 1 + automation * 0.05 + bonuses.automation * 0.35;
   return def.basePrice * quality * crew * auto;
@@ -146,7 +146,7 @@ export function getOfflineEfficiency(state) {
     counted += 1;
   }
   const average = counted ? automation / counted : 0;
-  return Math.min(0.95, 0.4 + night * 0.045 + average * 0.03 + researchBonus(state, 'offline'));
+  return Math.min(0.95, 0.22 + night * 0.045 + average * 0.03 + researchBonus(state, 'offline'));
 }
 
 export function isCrateBlocked(inventory, capacity, auto, reserved) {

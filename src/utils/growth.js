@@ -139,9 +139,11 @@ export function chainBuffer(line) {
   return 4 + Math.floor((line?.conveyor || 0) / 2);
 }
 
+export const PRESTIGE_EARNINGS = 80000;
+
 export function canPrestige(state) {
   const level = getLevelInfo(state.totalXp || 0).level;
-  return level >= 10 || (state.totalEarned || 0) >= 25000;
+  return level >= 10 || (state.totalEarned || 0) >= PRESTIGE_EARNINGS;
 }
 
 export function prestigeGain(state) {

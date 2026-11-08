@@ -13,12 +13,31 @@ const CARD = { top: ['#dcae6f', '#c9944f'], left: ['#b9844b', '#9a6a37'], right:
 const WOOD = { top: ['#b98a55', '#a37744'], left: ['#8d653a', '#74512d'], right: ['#6d4c2a', '#553a20'] };
 
 export function paintCanvas(scene, key, width, height, draw) {
+  const res = scene.artScale || 1;
   if (scene.textures.exists(key)) scene.textures.remove(key);
-  const texture = scene.textures.createCanvas(key, width, height);
+  const texture = scene.textures.createCanvas(key, Math.ceil(width * res), Math.ceil(height * res));
   const ctx = texture.getContext();
-  ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, texture.width, texture.height);
+  ctx.setTransform(res, 0, 0, res, 0, 0);
   draw(ctx, width, height);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   texture.refresh();
+  if (res !== 1) setLogicalSize(texture, width, height, res);
+}
+
+// Canvas renderer draws a frame at cutWidth / source.resolution, while game objects size and
+// anchor themselves on the frame's logical size, so a hi-res texture keeps its 1x layout.
+function setLogicalSize(texture, width, height, res) {
+  texture.source[0].resolution = res;
+  const frame = texture.get();
+  frame.width = width;
+  frame.height = height;
+  frame.halfWidth = width * 0.5;
+  frame.halfHeight = height * 0.5;
+  frame.centerX = Math.floor(width / 2);
+  frame.centerY = Math.floor(height / 2);
+  frame.data.sourceSize.w = width;
+  frame.data.sourceSize.h = height;
 }
 
 function face(ctx, points, c1, c2, x1, y1, x2, y2) {

@@ -13,6 +13,14 @@ import {
   tick,
 } from '../src/game/engine.js';
 import { getLineStats } from '../src/utils/economy.js';
+import { PRESTIGE_EARNINGS } from '../src/utils/growth.js';
+import { xpForLevel } from '../src/utils/progression.js';
+
+function xpToReach(level) {
+  let total = 0;
+  for (let step = 1; step < level; step += 1) total += xpForLevel(step);
+  return total;
+}
 
 function run(seconds, state, step = 0.5) {
   let current = state;
@@ -47,7 +55,7 @@ if (dry.bottleneck !== 'Need raw' && dry.bottleneck !== 'Intake slow') {
   throw new Error(`Expected a supply bottleneck, got ${dry.bottleneck}`);
 }
 
-state.totalXp = 2000;
+state.totalXp = xpToReach(5);
 state.lines.shirts.unlocked = true;
 const blocked = doUnlockLine(state, 'watches');
 if (!deny(blocked)) throw new Error('Watches opened without the assembly room');
@@ -56,7 +64,7 @@ if (!blocked.events.some((event) => /assembly/i.test(event.message || ''))) {
 }
 
 state.money = 5000;
-state.totalXp = 5000;
+state.totalXp = xpToReach(8);
 const room = doBuyRoom(state, 'assembly');
 if (deny(room)) throw new Error(room.events.map((event) => event.message).join(' '));
 state = room.state;
@@ -101,7 +109,9 @@ state = loaded.state;
 if ((state.contractsCompleted || 0) < 1) throw new Error('Contract did not complete');
 
 const beforePrestige = state.research.unlocked.slice();
-state.totalEarned = 30000;
+state.totalEarned = PRESTIGE_EARNINGS - 1;
+if (!deny(doPrestige(state))) throw new Error('Prestige opened below the earnings gate');
+state.totalEarned = PRESTIGE_EARNINGS;
 const prestige = doPrestige(state);
 if (deny(prestige)) throw new Error(prestige.events.map((event) => event.message).join(' '));
 state = prestige.state;

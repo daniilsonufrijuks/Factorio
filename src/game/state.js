@@ -79,7 +79,7 @@ export function createInitialState(now = Date.now()) {
     nextOrderFillAt: now + 25000,
     pendingOffline: null,
     tutorialStep: 0,
-    materials: 40,
+    materials: 16,
     materialTimer: 0,
     rooms: {
       cutting: { owned: true, slots: 0 },

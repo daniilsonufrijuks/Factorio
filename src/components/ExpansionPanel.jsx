@@ -3,7 +3,7 @@ import { Building2, Expand, Gauge, Gem, RotateCcw, Sparkles, Wrench } from 'luci
 import { LINE_MAP } from '../data/content.js';
 import { ROOMS } from '../data/growth.js';
 import { useGame } from '../context/GameContext.jsx';
-import { canPrestige, factoryValuation, prestigeGain, prestigeUpgradeCost, slotCost } from '../utils/growth.js';
+import { PRESTIGE_EARNINGS, canPrestige, factoryValuation, prestigeGain, prestigeUpgradeCost, slotCost } from '../utils/growth.js';
 import { formatMoney, formatNumber } from '../utils/formatter.js';
 import { getLevelInfo } from '../utils/progression.js';
 import UpgradeCard, { PanelHeader, SectionTitle, cashStatus } from './ui/UpgradeCard.jsx';
@@ -111,7 +111,7 @@ export default function ExpansionPanel() {
           eyebrow="Optional"
           title={confirm ? 'Restart the works?' : 'Prestige the mill'}
           description="Restarts cash, rooms, lines, crew, and logistics. Keeps research, achievements, lifetime totals, and prestige bonuses."
-          detail={ready ? `Next run grants ${prestigeGain(state)} prestige points.` : 'Unlocks at level 10 or $25K earned.'}
+          detail={ready ? `Next run grants ${prestigeGain(state)} prestige points.` : `Unlocks at level 10 or ${formatMoney(PRESTIGE_EARNINGS)} earned.`}
           status={ready ? (confirm ? 'ready' : 'available') : 'locked'}
           statusText={ready ? (confirm ? 'Confirm' : 'Ready') : 'Locked'}
           actionLabel={confirm ? 'Confirm prestige' : 'Prestige'}

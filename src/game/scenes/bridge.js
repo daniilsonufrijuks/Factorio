@@ -4,5 +4,6 @@ export const factoryBridge = {
   ready() {},
   scene: null,
   insetBottom: 0,
+  resolution: 1,
   reduceMotion: false,
 };
