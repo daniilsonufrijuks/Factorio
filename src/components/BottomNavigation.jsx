@@ -24,7 +24,7 @@ import {
   lineUpgradeCost,
   upgradeMax,
 } from '../utils/economy.js';
-import { techReady } from '../utils/growth.js';
+import { freeStock, techReady } from '../utils/growth.js';
 import { getLevelInfo } from '../utils/progression.js';
 
 export const SECTIONS = [
@@ -165,7 +165,7 @@ export function badgeMap(state) {
     return template && employee.level < 20 && state.money >= employeeTrainCost(template, employee.level);
   });
 
-  const warehouse = Object.values(state.lines).some((line) => line.unlocked && line.inventory > 0);
+  const warehouse = Object.entries(state.lines).some(([id, line]) => line.unlocked && freeStock(state, id) > 0);
   const orders = state.orders.some((order) => (state.lines[order.lineId]?.inventory || 0) >= order.qty);
   const research = RESEARCH.some((tech) => techReady(state, tech));
   const goals = (state.daily?.missions || []).some((mission) => !mission.claimed && mission.progress >= mission.goal);

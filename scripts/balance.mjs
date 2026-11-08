@@ -1,5 +1,5 @@
 import { createInitialState } from '../src/game/state.js';
-import { doBuyLineUpgrade, doSellAll, doSetAutoSell, tick } from '../src/game/engine.js';
+import { doBuyLineUpgrade, doCompleteOrder, doSellAll, doSetAutoSell, tick } from '../src/game/engine.js';
 import { getFactoryRates } from '../src/utils/economy.js';
 import { getLevelInfo } from '../src/utils/progression.js';
 import { formatMoney } from '../src/utils/formatter.js';
@@ -17,11 +17,19 @@ function run(seconds, state, step = 0.5) {
   return current;
 }
 
+function cashIn(state) {
+  let current = state;
+  for (const order of state.orders) {
+    if ((current.lines[order.lineId]?.inventory || 0) >= order.qty) current = doCompleteOrder(current, order.id).state;
+  }
+  return doSellAll(current).state;
+}
+
 let state = createInitialState(1_700_000_000_000);
 state = run(45, state);
 const produced = state.totalProduced;
 if (produced < 10) throw new Error(`Expected shoes to be produced, got ${produced}`);
-state = doSellAll(state).state;
+state = cashIn(state);
 if (state.money <= 0) throw new Error('Selling stock did not pay');
 const afterSell = state.money;
 
@@ -35,7 +43,7 @@ while (guard < 12) {
 if (state.lines.shoes.speed < 1) throw new Error('Could not buy a speed upgrade');
 
 state = run(80, state);
-state = doSellAll(state).state;
+state = cashIn(state);
 const level = getLevelInfo(state.totalXp).level;
 let automation = doBuyLineUpgrade(state, 'shoes', 'automation');
 if (level < 2) {

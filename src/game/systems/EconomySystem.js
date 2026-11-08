@@ -10,6 +10,7 @@ import {
   surgeReward,
   whistleCost,
 } from '../../utils/economy.js';
+import { freeStock } from '../../utils/growth.js';
 import { grantXp } from '../../utils/progression.js';
 import { noteProgress } from '../../utils/progressHooks.js';
 
@@ -22,9 +23,10 @@ export function sellLine(state, events, lineId) {
   const def = LINE_MAP[lineId];
   if (!line?.unlocked || !def) return fail('That line is not open.');
   if (line.inventory <= 0) return fail('The crate is empty.');
-  const count = line.inventory;
+  const count = freeStock(state, lineId);
+  if (count <= 0) return fail('Everything in this crate is held for orders.');
   const money = count * getSellPrice(state, lineId);
-  line.inventory = 0;
+  line.inventory -= count;
   line.sold += count;
   state.totalSold += count;
   state.money += money;
@@ -38,13 +40,17 @@ export function sellLine(state, events, lineId) {
 
 export function sellAll(state, events) {
   let sold = false;
+  let held = false;
   for (const def of LINES) {
-    if ((state.lines[def.id]?.inventory || 0) > 0) {
-      const result = sellLine(state, events, def.id);
-      if (result.ok) sold = true;
+    if (!state.lines[def.id]?.unlocked || (state.lines[def.id]?.inventory || 0) <= 0) continue;
+    if (freeStock(state, def.id) <= 0) {
+      held = true;
+      continue;
     }
+    const result = sellLine(state, events, def.id);
+    if (result.ok) sold = true;
   }
-  if (!sold) return fail('Nothing in storage yet.');
+  if (!sold) return fail(held ? 'Everything in storage is held for orders.' : 'Nothing in storage yet.');
   return { ok: true };
 }
 

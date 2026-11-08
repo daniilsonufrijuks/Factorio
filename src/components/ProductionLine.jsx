@@ -39,9 +39,16 @@ export default function ProductionLine({ lineId, compact = false }) {
       <div className="meter" aria-label={`${line.inventory} of ${stats.capacity} in storage`}>
         <span style={{ width: `${fill}%`, background: def.palette.tag }} />
       </div>
+      <div className="stat-row">
+        <span>{line.inventory} / {stats.capacity} stored</span>
+        <span>{stats.free} free</span>
+        <span className={stats.held > 0 ? 'good' : ''}>{stats.held} held</span>
+      </div>
       <div className="line-actions">
-        <button type="button" className="btn btn-gold" disabled={line.inventory <= 0} onClick={() => sellLine(lineId)}>
-          Sell {line.inventory > 0 ? formatMoney(line.inventory * stats.price) : 'empty'}
+        <button type="button" className="btn btn-gold" disabled={stats.free <= 0} onClick={() => sellLine(lineId)}>
+          {stats.free > 0
+            ? `Sell ${formatMoney(stats.free * stats.price)}`
+            : line.inventory > 0 ? 'Held for orders' : 'Sell empty'}
         </button>
         <button type="button" className="btn btn-ghost" onClick={() => openUpgrades(lineId)}>Upgrade</button>
       </div>
@@ -54,7 +61,13 @@ export default function ProductionLine({ lineId, compact = false }) {
         <i />
         {stats.autoReady ? 'Auto-sell' : 'Auto-sell locked'}
       </button>
-      {stats.stalled ? <p className="warn">Crate is full. Sell or add storage, or the belt stops.</p> : null}
+      {stats.stalled ? (
+        <p className="warn">
+          {stats.free <= 0 && stats.held > 0
+            ? 'Crate is full of goods held for orders. Deliver or add storage, or the belt stops.'
+            : 'Crate is full. Sell or add storage, or the belt stops.'}
+        </p>
+      ) : null}
       {stats.condition < 99 ? (
         <button type="button" className="btn" onClick={() => repairLine(lineId)}>
           Repair · {formatMoney(repairCost(stats.price, stats.condition))}

@@ -1,6 +1,7 @@
 import { Container, Forklift, Package, PackageCheck, Truck } from 'lucide-react';
 import { LINE_MAP } from '../data/content.js';
 import { useGame } from '../context/GameContext.jsx';
+import { getLineStats } from '../utils/economy.js';
 import { forkliftCost, materialCap, palletCost, truckCost, truckDrop, truckInterval } from '../utils/growth.js';
 import { formatMoney, formatNumber } from '../utils/formatter.js';
 import UpgradeCard, { PanelHeader, SectionTitle, cashStatus } from './ui/UpgradeCard.jsx';
@@ -86,8 +87,14 @@ export default function LogisticsPanel() {
         ) : null}
         {state.contracts.map((contract) => {
           const def = LINE_MAP[contract.lineId];
-          const stock = state.lines[contract.lineId]?.inventory || 0;
+          const line = state.lines[contract.lineId];
+          const stock = line?.inventory || 0;
           const left = contract.qty - contract.loaded;
+          const stocking = stock <= 0 && Boolean(line?.unlocked) && getLineStats(state, contract.lineId).autoSell;
+          const statusText = stock > 0 ? 'Can load' : stocking ? 'Stocking' : 'Need stock';
+          const description = stocking
+            ? `Auto-sell is holding output for this truck · ${left} still to load`
+            : `${stock} in storage · ${left} still to load`;
           return (
             <UpgradeCard
               key={contract.id}
@@ -95,9 +102,9 @@ export default function LogisticsPanel() {
               tone={def?.palette.tag}
               eyebrow={contract.customer}
               title={`${contract.qty} × ${def?.product || contract.lineId}`}
-              description={`${stock} in storage · ${left} still to load`}
+              description={description}
               status={stock > 0 ? 'ready' : 'idle'}
-              statusText={stock > 0 ? 'Can load' : 'Need stock'}
+              statusText={statusText}
               progress={contract.loaded / contract.qty}
               progressLabel={`${contract.loaded} / ${contract.qty} loaded`}
               actionLabel="Load truck"

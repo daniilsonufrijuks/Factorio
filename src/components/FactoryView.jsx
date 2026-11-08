@@ -6,7 +6,7 @@ import { useGame } from '../context/GameContext.jsx';
 import FactoryScene from '../game/scenes/FactoryScene.js';
 import { factoryBridge } from '../game/scenes/bridge.js';
 import { getFactoryRates } from '../utils/economy.js';
-import { averageCondition } from '../utils/growth.js';
+import { averageCondition, bottleneckFix } from '../utils/growth.js';
 import { formatMoney, formatRate } from '../utils/formatter.js';
 import { FactoryDocks } from './BottomNavigation.jsx';
 
@@ -94,20 +94,32 @@ export default function FactoryView() {
   const rates = getFactoryRates(state);
   let stockValue = 0;
   let stockCount = 0;
-  let stalled = 0;
+  let freeCount = 0;
+  const flagged = { full: [], raw: [], service: [], stocking: [] };
   for (const [lineId, stats] of Object.entries(rates.lines)) {
-    const count = state.lines[lineId].inventory;
-    stockCount += count;
-    stockValue += count * stats.price;
-    if (stats.stalled) stalled += 1;
+    stockCount += state.lines[lineId].inventory;
+    freeCount += stats.free;
+    stockValue += stats.free * stats.price;
+    if (stats.bottleneck === 'Crate full') flagged.full.push(lineId);
+    else if (stats.bottleneck === 'Need raw') flagged.raw.push(lineId);
+    else if (stats.bottleneck === 'Needs service') flagged.service.push(lineId);
+    else if (stats.bottleneck === 'Stocking order') flagged.stocking.push(lineId);
   }
   const open = Object.keys(rates.lines).length;
   const efficiency = Math.round(averageCondition(state));
   const dry = (state.materials || 0) <= 0;
-  let status = { tone: 'ok', text: 'All lines running' };
-  if (stalled > 0) status = { tone: 'bad', text: `${stalled} line${stalled > 1 ? 's' : ''} full` };
-  else if (dry) status = { tone: 'warn', text: 'Raw yard empty' };
-  else if (efficiency < 50) status = { tone: 'warn', text: 'Machines need service' };
+  const plural = (count, one, many) => `${count} ${count > 1 ? many : one}`;
+  let status = { tone: 'ok', text: 'All lines running', tab: null };
+  if (flagged.full.length) {
+    status = { tone: 'bad', text: `${plural(flagged.full.length, 'line', 'lines')} full`, tab: bottleneckFix(state, flagged.full[0], 'Crate full') };
+  } else if (dry || flagged.raw.length) {
+    status = { tone: 'warn', text: 'Raw yard empty', tab: 'logistics' };
+  } else if (flagged.service.length) {
+    status = { tone: 'warn', text: `${plural(flagged.service.length, 'line needs', 'lines need')} service`, tab: 'robotics' };
+  } else if (flagged.stocking.length) {
+    status = { tone: 'ok', text: flagged.stocking.length > 1 ? `Stocking ${flagged.stocking.length} lines` : 'Stocking an order', tab: bottleneckFix(state, flagged.stocking[0], 'Stocking order') };
+  }
+  const StatusTag = status.tab ? 'button' : 'div';
   const tutorial = state.tutorialStep < 3 ? TUTORIAL[state.tutorialStep] : null;
 
   return (
@@ -125,13 +137,16 @@ export default function FactoryView() {
         </aside>
       ) : null}
       <section ref={overviewRef} className="overview" aria-label="Production overview">
-        <div className={`ov-status tone-${status.tone}`}>
+        <StatusTag
+          className={`ov-status tone-${status.tone}`}
+          {...(status.tab ? { type: 'button', onClick: () => setTab(status.tab) } : {})}
+        >
           <i />
           <div>
             <small>Production</small>
             <strong>{status.text}</strong>
           </div>
-        </div>
+        </StatusTag>
         <button type="button" className="ov-stat ov-link" onClick={() => setTab('lines')}>
           <Factory size={15} />
           <div>
@@ -160,9 +175,9 @@ export default function FactoryView() {
             <strong className={efficiency < 50 ? 'is-bad' : ''}>{efficiency}%</strong>
           </div>
         </div>
-        <button type="button" className={`ov-sell ${stockCount > 0 ? 'is-ready' : ''}`} disabled={stockCount <= 0} onClick={sellAll}>
-          <small>{stockCount > 0 ? 'Sell all' : 'Storage empty'}</small>
-          <strong>{formatMoney(stockValue)}</strong>
+        <button type="button" className={`ov-sell ${freeCount > 0 ? 'is-ready' : ''}`} disabled={freeCount <= 0} onClick={sellAll}>
+          <small>{freeCount > 0 ? 'Sell all' : stockCount > 0 ? 'Held for orders' : 'Storage empty'}</small>
+          <strong>{freeCount <= 0 && stockCount > 0 ? `${stockCount} units` : formatMoney(stockValue)}</strong>
         </button>
       </section>
     </div>

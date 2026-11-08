@@ -84,13 +84,53 @@ export function palletCost(state) {
   return Math.max(35, Math.round(20 + (state.materials || 0) * 0.4));
 }
 
-export function describeBottleneck(state, lineId, stalled) {
+export function reservedForOrders(state, lineId) {
+  let total = 0;
+  for (const order of state.orders || []) {
+    if (order.lineId === lineId) total += Math.max(0, order.qty || 0);
+  }
+  return total;
+}
+
+export function reservedForContracts(state, lineId) {
+  let total = 0;
+  for (const contract of state.contracts || []) {
+    if (contract.lineId === lineId) total += Math.max(0, (contract.qty || 0) - (contract.loaded || 0));
+  }
+  return total;
+}
+
+export function reservedFor(state, lineId) {
+  return reservedForOrders(state, lineId) + reservedForContracts(state, lineId);
+}
+
+export function freeStock(state, lineId) {
+  const line = state.lines?.[lineId];
+  if (!line) return 0;
+  return Math.max(0, (line.inventory || 0) - reservedFor(state, lineId));
+}
+
+export function bottleneckFix(state, lineId, bottleneck) {
+  if (bottleneck === 'Need raw' || bottleneck === 'Intake slow') return 'logistics';
+  if (bottleneck === 'Needs service') return 'robotics';
+  if (bottleneck === 'Stocking order') return reservedForOrders(state, lineId) > 0 ? 'orders' : 'logistics';
+  if (bottleneck === 'Crate full') {
+    if (freeStock(state, lineId) > 0) return 'warehouse';
+    if (reservedForOrders(state, lineId) > 0) return 'orders';
+    if (reservedForContracts(state, lineId) > 0) return 'logistics';
+    return 'warehouse';
+  }
+  return null;
+}
+
+export function describeBottleneck(state, lineId, stalled, auto = false) {
   const line = state.lines?.[lineId];
   if (!line) return 'Flowing';
   if (stalled) return 'Crate full';
   if ((line.condition ?? 100) < 40) return 'Needs service';
   if ((state.materials || 0) <= 0 && (line.raw || 0) <= 0) return 'Need raw';
   if ((line.raw || 0) <= 0 && (line.wip || 0) <= 0) return 'Intake slow';
+  if (auto && (line.inventory || 0) < reservedFor(state, lineId)) return 'Stocking order';
   if ((line.wip || 0) <= 0) return 'Forming';
   return 'Flowing';
 }

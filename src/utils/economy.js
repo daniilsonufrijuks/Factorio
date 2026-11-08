@@ -11,6 +11,7 @@ import {
   describeBottleneck,
   parallelBonus,
   researchBonus,
+  reservedFor,
   truckDrop,
   truckInterval,
 } from './growth.js';
@@ -148,6 +149,10 @@ export function getOfflineEfficiency(state) {
   return Math.min(0.95, 0.4 + night * 0.045 + average * 0.03 + researchBonus(state, 'offline'));
 }
 
+export function isCrateBlocked(inventory, capacity, auto, reserved) {
+  return inventory >= capacity && (!auto || inventory < reserved);
+}
+
 export function getLineStats(state, lineId, overrides = {}) {
   const line = state.lines[lineId];
   const bonuses = getBonuses(state, lineId);
@@ -156,21 +161,27 @@ export function getLineStats(state, lineId, overrides = {}) {
   const capacity = getCapacity(state, lineId, { ...overrides, bonuses });
   const autoReady = (overrides.automation ?? line.automation) >= 1 || bonuses.grantsAuto;
   const autoSell = Boolean(line.autoSell) && autoReady;
+  const reserved = reservedFor(state, lineId);
+  const stalled = isCrateBlocked(line.inventory, capacity, autoSell, reserved);
   return {
     cycle,
     price,
     perSec: price / cycle,
     capacity,
     inventory: line.inventory,
+    reserved,
+    held: Math.min(line.inventory, reserved),
+    free: Math.max(0, line.inventory - reserved),
+    stocking: autoSell && line.inventory < reserved,
     autoReady,
     autoSell,
-    stalled: !autoSell && line.inventory >= capacity,
+    stalled,
     progress: Math.max(0, Math.min(1, line.progress / cycle)),
     bonuses,
     raw: line.raw || 0,
     wip: line.wip || 0,
     condition: line.condition ?? 100,
-    bottleneck: describeBottleneck(state, lineId, !autoSell && line.inventory >= capacity),
+    bottleneck: describeBottleneck(state, lineId, stalled, autoSell),
   };
 }
 
@@ -250,13 +261,25 @@ export function computeOfflineReward(state, seconds) {
     const price = getSellPrice(state, def.id);
     const cycles = Math.floor((seconds / cycle) * supplyFactor(state));
     if (cycles <= 0) continue;
-    reward.produced += cycles;
-    reward.xp += cycles * def.tier * 0.55;
     const auto = line.autoSell && canAutomate(state, def.id);
     if (auto) {
-      reward.money += cycles * price * efficiency;
-      reward.sold += cycles;
+      const cap = getCapacity(state, def.id);
+      const reserved = reservedFor(state, def.id);
+      const inventory = line.inventory + (state.pendingOffline?.stock?.[def.id] || 0);
+      const space = Math.max(0, cap - inventory);
+      const owed = Math.max(0, reserved - inventory);
+      const stored = Math.min(cycles, owed, space);
+      const blocked = owed > space && cycles >= space;
+      const sold = blocked ? 0 : cycles - stored;
+      const made = stored + sold;
+      if (stored > 0) reward.stock[def.id] = stored;
+      reward.produced += made;
+      reward.xp += made * def.tier * 0.55;
+      reward.money += sold * price * efficiency;
+      reward.sold += sold;
     } else {
+      reward.produced += cycles;
+      reward.xp += cycles * def.tier * 0.55;
       const cap = getCapacity(state, def.id);
       const space = Math.max(0, cap - line.inventory);
       const stored = Math.min(space, cycles);

@@ -3,7 +3,7 @@ import { EMPLOYEE_MAP, LINES, THEMES } from '../../data/content.js';
 import { ROOMS } from '../../data/growth.js';
 import { getLineStats } from '../../utils/economy.js';
 import { formatMoney } from '../../utils/formatter.js';
-import { materialCap, roomForLine, truckInterval } from '../../utils/growth.js';
+import { bottleneckFix, materialCap, roomForLine, truckInterval } from '../../utils/growth.js';
 import { getLevelInfo } from '../../utils/progression.js';
 import { factoryBridge } from './bridge.js';
 import { FINISH_ANCHORS, MACHINE_H, MACHINE_W, PRESS_ANCHORS, finisherRoomIndex, paintAll } from './art.js';
@@ -14,7 +14,25 @@ const DEPT_H = 30;
 const LOCK_H = 104;
 const DOCK_H = 180;
 
-const STATUS_COLORS = { ok: 0x3ddc84, warn: 0xffc400, bad: 0xff5a4f };
+const STATUS_COLORS = { ok: 0x3ddc84, warn: 0xffc400, bad: 0xff5a4f, hold: 0x5ac8fa };
+const CALM_TONES = new Set(['ok', 'hold']);
+const STATUS_SETTLE_MS = 500;
+
+function floorStatus(stats) {
+  return { ...floorLook(stats), bottleneck: stats.bottleneck };
+}
+
+function floorLook(stats) {
+  switch (stats.bottleneck) {
+    case 'Crate full': return { key: 'bad', text: 'CRATE FULL', spot: 'crate', tag: 'CRATE FULL', bg: '#ff5a4f', fg: '#ffffff' };
+    case 'Needs service': return { key: 'warn', text: 'NEEDS SERVICE', spot: 'press', tag: 'NEEDS SERVICE', bg: '#ff5a4f', fg: '#ffffff' };
+    case 'Need raw': return { key: 'warn', text: 'NO RAW', spot: 'press', tag: 'NO RAW', bg: '#ffc400', fg: '#1a1a1a' };
+    case 'Intake slow': return { key: 'warn', text: 'INTAKE SLOW', spot: 'press', tag: 'INTAKE SLOW', bg: '#ffc400', fg: '#1a1a1a' };
+    case 'Stocking order': return { key: 'hold', text: 'STOCKING ORDER', spot: 'crate', tag: `STOCKING ${stats.held}/${stats.reserved}`, bg: '#5ac8fa', fg: '#0d1a22' };
+    case 'Forming': return { key: 'ok', text: 'FORMING', spot: null };
+    default: return { key: 'ok', text: stats.autoSell ? 'AUTO SELL' : 'RUNNING', spot: null };
+  }
+}
 
 function hexNum(color) {
   return Number.parseInt(String(color).replace('#', ''), 16);
@@ -117,13 +135,13 @@ export default class FactoryScene extends Phaser.Scene {
       } catch (error) {
         hits = [];
       }
-      const lineZone = hits.find((hit) => hit?.getData?.('lineId'));
-      if (lineZone) {
-        factoryBridge.tap(lineZone.getData('lineId'));
+      const tabZone = hits.find((hit) => hit?.getData?.('tab'));
+      if (tabZone) {
+        factoryBridge.openTab?.(tabZone.getData('tab'));
         return;
       }
-      const tabZone = hits.find((hit) => hit?.getData?.('tab'));
-      if (tabZone) factoryBridge.openTab?.(tabZone.getData('tab'));
+      const lineZone = hits.find((hit) => hit?.getData?.('lineId'));
+      if (lineZone) factoryBridge.tap(lineZone.getData('lineId'));
     });
     this.input.on('wheel', (_pointer, _objects, _dx, dy) => {
       this.cameras.main.scrollY = Phaser.Math.Clamp(this.cameras.main.scrollY + dy * 0.6, 0, this.maxScroll);
@@ -206,7 +224,11 @@ export default class FactoryScene extends Phaser.Scene {
       row.container.setVisible(on);
       row.zone.setVisible(on);
       if (on) row.zone.setInteractive();
-      else row.zone.disableInteractive();
+      else {
+        row.zone.disableInteractive();
+        row.chipZone.disableInteractive();
+        row.tagZone.disableInteractive();
+      }
     }
   }
 
@@ -240,13 +262,18 @@ export default class FactoryScene extends Phaser.Scene {
     const robot = this.add.image(0, 0, 'robot').setOrigin(0.5, 1).setVisible(false);
     const worker = this.add.container(0, 0, [body, hand, robot]);
     const fullTag = label(this, 'FULL', 10, '#ffffff').setOrigin(0.5).setBackgroundColor('#ff5a4f').setPadding(5, 2, 5, 2).setVisible(false);
+    const pressTag = label(this, '', 10, '#ffffff').setOrigin(0.5).setPadding(5, 2, 5, 2).setVisible(false);
     container.add([
       chrome, chip, eyebrow, title, rate, status, plaqueA, plaqueB, plaqueC,
       beltA, beltB, ...items, pallet, ...cartons, worker, press, ram, finish, arm,
-      beaconA, beaconB, ...puffs, fullTag,
+      beaconA, beaconB, ...puffs, fullTag, pressTag,
     ]);
     const zone = this.add.zone(0, 0, 10, 10).setDepth(6);
     zone.setData('lineId', def.id);
+    const chipZone = this.add.zone(0, 0, 10, 10).setDepth(7);
+    const tagZone = this.add.zone(0, 0, 10, 10).setDepth(7);
+    chipZone.disableInteractive();
+    tagZone.disableInteractive();
     this.rows[def.id] = {
       id: def.id,
       index,
@@ -283,7 +310,13 @@ export default class FactoryScene extends Phaser.Scene {
       worker,
       workerBase: 0,
       fullTag,
+      pressTag,
       zone,
+      chipZone,
+      tagZone,
+      floor: null,
+      floorSeen: '',
+      floorSeenAt: 0,
       route: null,
       loopMs: 3200,
       animTime: Math.random() * 2000,
@@ -469,6 +502,9 @@ export default class FactoryScene extends Phaser.Scene {
     this.tweens.killTweensOf(row.pallet);
     row.pallet.setData('baseY', baseY - 2);
     row.fullTag.setPosition(storeX + storeW / 2, baseY - 14 * palletScale - cw * 2.1 - 8);
+    row.pressTag.setPosition(pressX + mw / 2, machineY + mh * 0.24);
+    row.floorSeen = '';
+    row.floor = null;
 
     const ws = Phaser.Math.Clamp(mh / 130, 0.7, 1.3);
     row.worker.setScale(ws);
@@ -823,7 +859,12 @@ export default class FactoryScene extends Phaser.Scene {
     const materials = Math.floor(this.snapshot.materials || 0);
     const fill = cap > 0 ? materials / cap : 0;
     dock.yardText.setText(`RAW YARD  ${materials}/${cap}`);
-    dock.yardText.setColor(materials <= 0 ? '#ff5a4f' : '#ffffff');
+    const starved = materials <= 0 || Object.values(this.stats || {}).some((stats) => stats.bottleneck === 'Need raw');
+    dock.yardText.setColor(materials <= 0 ? '#ff5a4f' : starved ? '#ffc400' : '#ffffff');
+    (this.pools['yard-pallet'] || []).forEach((pallet) => {
+      if (starved) pallet.setTint(0xffb04a);
+      else pallet.clearTint();
+    });
     dock.fills.forEach((carton, i) => carton.setVisible(fill > i / 3 + 0.02));
     const forks = Phaser.Math.Clamp(this.snapshot.logistics?.forklifts || 0, 1, 3);
     dock.forks.forEach((fork, i) => fork.setVisible(i < forks));
@@ -836,15 +877,10 @@ export default class FactoryScene extends Phaser.Scene {
       const line = this.snapshot.lines[def.id];
       if (!row || !stats || !line?.unlocked) continue;
       row.rate.setText(`${formatMoney(stats.perSec)}/s`);
-      let key = 'ok';
-      let text = stats.autoSell ? 'AUTO SELL' : 'RUNNING';
-      if (stats.stalled) {
-        key = 'bad';
-        text = 'STORAGE FULL';
-      } else if (stats.bottleneck && stats.bottleneck !== 'Flowing') {
-        key = stats.bottleneck === 'Forming' ? 'ok' : 'warn';
-        text = stats.bottleneck.toUpperCase();
-      }
+      const view = this.settleStatus(row, stats);
+      const tab = bottleneckFix(this.snapshot, def.id, view.bottleneck);
+      const { key } = view;
+      const text = tab ? `${view.text}  ›` : view.text;
       row.statusTone = key;
       const signature = `${key}:${text}`;
       if (row.statusKey !== signature) {
@@ -860,17 +896,59 @@ export default class FactoryScene extends Phaser.Scene {
         row.chip.fillStyle(STATUS_COLORS[key], 1);
         row.chip.fillCircle(x + 10, row.chipY, 3.5);
         row.status.setPosition(row.rateX - 9, row.chipY);
+        row.chipZone.setPosition(x + w / 2, row.top + row.chipY).setSize(w, 28);
       }
+      this.setTabZone(row.chipZone, tab);
       row.plaqueC.setText(`STORAGE ${line.inventory}/${stats.capacity}`);
-      row.plaqueC.setColor(stats.stalled ? '#ff5a4f' : '#a0a0a0');
+      row.plaqueC.setColor(stats.stalled ? '#ff5a4f' : stats.stocking ? '#5ac8fa' : '#a0a0a0');
       const fill = stats.capacity > 0 ? line.inventory / stats.capacity : 0;
       const shown = line.inventory <= 0 ? 0 : Math.max(1, Math.ceil(fill * row.cartons.length));
       row.cartons.forEach((carton, i) => carton.setVisible(i < shown));
-      row.fullTag.setVisible(Boolean(stats.stalled));
+      this.refreshSpotTags(row, view, tab);
       this.refreshCrew(row);
     }
     this.refreshLock();
     this.refreshDock();
+  }
+
+  settleStatus(row, stats) {
+    const next = floorStatus(stats);
+    const now = this.time?.now || 0;
+    if (row.floorSeen !== next.text) {
+      row.floorSeen = next.text;
+      row.floorSeenAt = now;
+    }
+    const urgent = next.key === 'bad';
+    if (!row.floor || urgent || now - row.floorSeenAt >= STATUS_SETTLE_MS || row.floor.text === next.text) {
+      row.floor = next;
+    }
+    return row.floor;
+  }
+
+  setTabZone(zone, tab) {
+    zone.setData('tab', tab || null);
+    if (tab) zone.setInteractive();
+    else zone.disableInteractive();
+  }
+
+  refreshSpotTags(row, view, tab) {
+    const onCrate = view.spot === 'crate';
+    const onPress = view.spot === 'press';
+    row.fullTag.setVisible(onCrate);
+    row.pressTag.setVisible(onPress);
+    row.press.clearTint();
+    const tag = onCrate ? row.fullTag : onPress ? row.pressTag : null;
+    if (!tag) {
+      this.setTabZone(row.tagZone, null);
+      return;
+    }
+    if (tag.text !== view.tag) tag.setText(view.tag);
+    tag.setBackgroundColor(view.bg).setColor(view.fg);
+    if (view.text === 'NEEDS SERVICE') row.press.setTint(0xffb4ac);
+    row.tagZone
+      .setPosition(tag.x, row.top + tag.y)
+      .setSize(Math.max(64, tag.width + 16), Math.max(28, tag.height + 12));
+    this.setTabZone(row.tagZone, tab);
   }
 
   refreshCrew(row) {
@@ -1090,9 +1168,10 @@ export default class FactoryScene extends Phaser.Scene {
     }
 
     const beacon = STATUS_COLORS[tone];
-    const blink = tone === 'ok' ? 0.75 + Math.sin(time / 500 + row.phase) * 0.2 : 0.35 + Math.abs(Math.sin(time / 160)) * 0.65;
+    const calm = CALM_TONES.has(tone);
+    const blink = calm ? 0.75 + Math.sin(time / 500 + row.phase) * 0.2 : 0.35 + Math.abs(Math.sin(time / 160)) * 0.65;
     row.beaconA.setTint(beacon).setAlpha(blink);
-    row.beaconB.setTint(beacon).setAlpha(tone === 'ok' ? 0.7 : blink);
+    row.beaconB.setTint(beacon).setAlpha(calm ? 0.7 : blink);
 
     if (!factoryBridge.reduceMotion) {
       row.worker.y = row.workerBase + Math.sin(time / 260 + row.phase) * (stalled ? 0.6 : 1.4);
@@ -1109,7 +1188,9 @@ export default class FactoryScene extends Phaser.Scene {
         row.puffs.forEach((puff) => puff.setAlpha(0));
       }
     }
-    if (row.fullTag.visible) row.fullTag.setScale(1 + Math.abs(Math.sin(time / 240)) * 0.06);
+    const pulse = calm ? 1 : 1 + Math.abs(Math.sin(time / 240)) * 0.06;
+    if (row.fullTag.visible) row.fullTag.setScale(pulse);
+    if (row.pressTag.visible) row.pressTag.setScale(pulse);
   }
 
   animateAmbient(time, delta, motion) {

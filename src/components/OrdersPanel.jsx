@@ -1,5 +1,6 @@
 import { LINES } from '../data/content.js';
 import { useGame } from '../context/GameContext.jsx';
+import { getLineStats } from '../utils/economy.js';
 import { formatDuration, formatMoney } from '../utils/formatter.js';
 import { ClipboardList } from 'lucide-react';
 import { PanelHeader } from './ui/UpgradeCard.jsx';
@@ -21,7 +22,7 @@ export default function OrdersPanel() {
         icon={ClipboardList}
         eyebrow="Orders"
         title="Customers pay above street price"
-        text="Deliver from storage, not from auto-sell. Pause a line if you need to stock an order."
+        text="Auto-sell lines hold goods for open tickets and street-sell the rest. Hold a line to keep everything in the crate."
         stats={[
           { label: 'Open', value: state.orders.length },
           { label: 'Ready', value: state.orders.filter((order) => (state.lines[order.lineId]?.inventory || 0) >= order.qty).length, tone: 'gold' },
@@ -34,7 +35,8 @@ export default function OrdersPanel() {
         const have = state.lines[order.lineId]?.inventory || 0;
         const ready = have >= order.qty;
         const remaining = order.deadline ? Math.max(0, (order.deadline - now) / 1000) : null;
-        const auto = state.lines[order.lineId]?.autoSell;
+        const stats = state.lines[order.lineId]?.unlocked ? getLineStats(state, order.lineId) : null;
+        const auto = Boolean(stats?.autoSell);
         return (
           <article key={order.id} className={`card order-card type-${order.type}`}>
             <header className="split">
@@ -49,6 +51,12 @@ export default function OrdersPanel() {
               <strong>{order.qty} {def?.product || 'goods'}</strong>
               <span>{have} in the crate</span>
             </p>
+            {auto ? (
+              <p className="muted">
+                {stats.held} held for orders · {stats.free} free to sell
+                {stats.stocking ? ' · stocking now' : ''}
+              </p>
+            ) : null}
             <div className="meter">
               <span style={{ width: `${Math.min(100, (have / order.qty) * 100)}%`, background: def?.palette.tag || '#ffb020' }} />
             </div>

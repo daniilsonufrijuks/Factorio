@@ -56,9 +56,14 @@
   gap: 10px;
   min-width: 0;
   padding: 6px 12px;
+  border: 0;
   border-radius: 10px;
   background: #1b1b1b;
+  color: inherit;
+  text-align: left;
 }
+button.ov-status { cursor: pointer; transition: background 0.15s ease; }
+button.ov-status:hover { background: #232323; }
 .ov-status i {
   width: 10px;
   height: 10px;

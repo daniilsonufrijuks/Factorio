@@ -1,6 +1,6 @@
 import { LINES } from '../../data/content.js';
-import { canAutomate, getCapacity, getCycleTime, getSellPrice } from '../../utils/economy.js';
-import { chainBuffer, materialCap, truckDrop, truckInterval, wearPerItem } from '../../utils/growth.js';
+import { canAutomate, getCapacity, getCycleTime, getSellPrice, isCrateBlocked } from '../../utils/economy.js';
+import { chainBuffer, materialCap, reservedFor, truckDrop, truckInterval, wearPerItem } from '../../utils/growth.js';
 import { noteProgress } from '../../utils/progressHooks.js';
 import { grantXp } from '../../utils/progression.js';
 
@@ -21,7 +21,8 @@ export function simulate(state, dt, events) {
       line.raw -= 1;
       line.wip = (line.wip || 0) + 1;
     });
-    if (!auto && line.inventory >= capacity && (line.wip || 0) > 0) {
+    const reserved = auto ? reservedFor(state, def.id) : 0;
+    if (isCrateBlocked(line.inventory, capacity, auto, reserved) && (line.wip || 0) > 0) {
       line.progress = cycle;
     } else {
       line.progress += dt;
@@ -30,7 +31,7 @@ export function simulate(state, dt, events) {
     let count = 0;
     let money = 0;
     while (line.progress >= cycle && count < 1000) {
-      if (!auto && line.inventory >= capacity) {
+      if (isCrateBlocked(line.inventory, capacity, auto, reserved)) {
         line.progress = cycle;
         break;
       }
@@ -44,7 +45,7 @@ export function simulate(state, dt, events) {
       line.produced += 1;
       state.totalProduced += 1;
       line.condition = Math.max(18, (line.condition ?? 100) - wearPerItem(state));
-      if (auto) {
+      if (auto && line.inventory >= reserved) {
         money += price;
         line.sold += 1;
         state.totalSold += 1;

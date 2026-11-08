@@ -10,11 +10,15 @@ export default function WarehousePanel() {
   const { state, sellLine, sellAll, setAutoSell, openUpgrades, buyPallet } = useGame();
   const open = LINES.filter((line) => state.lines[line.id].unlocked);
   let totalUnits = 0;
+  let totalFree = 0;
+  let totalHeld = 0;
   let totalValue = 0;
   for (const def of open) {
     const stats = getLineStats(state, def.id);
     totalUnits += state.lines[def.id].inventory;
-    totalValue += state.lines[def.id].inventory * stats.price;
+    totalFree += stats.free;
+    totalHeld += stats.held;
+    totalValue += stats.free * stats.price;
   }
 
   return (
@@ -23,15 +27,16 @@ export default function WarehousePanel() {
         icon={Warehouse}
         eyebrow="Warehouse"
         title={`${totalUnits} units on the racks`}
-        text="Finished goods wait here until you sell them, deliver an order, or auto-sell ships them."
+        text="Finished goods wait here until you sell them, deliver an order, or auto-sell ships them. Goods held for orders and trucks are never sold."
         stats={[
-          { label: 'Value', value: formatMoney(totalValue), tone: 'gold' },
+          { label: 'Free value', value: formatMoney(totalValue), tone: 'gold' },
+          { label: 'Held', value: formatNumber(totalHeld) },
           { label: 'Raw yard', value: `${formatNumber(state.materials)}/${formatNumber(materialCap(state))}` },
         ]}
       />
       <div className="line-actions">
-        <button type="button" className="btn btn-gold" disabled={totalUnits <= 0} onClick={sellAll}>
-          Sell everything · {formatMoney(totalValue)}
+        <button type="button" className="btn btn-gold" disabled={totalFree <= 0} onClick={sellAll}>
+          {totalFree > 0 || totalHeld <= 0 ? `Sell free stock · ${formatMoney(totalValue)}` : 'All stock is held'}
         </button>
         <button type="button" className="btn btn-ghost" onClick={() => openUpgrades(null)}>Add racks</button>
         <button type="button" className="btn" disabled={state.money < palletCost(state)} onClick={buyPallet}>Raw pallet · {formatMoney(palletCost(state))}</button>
@@ -48,14 +53,18 @@ export default function WarehousePanel() {
                 <div>
                   <h3>{def.product}</h3>
                   <p className="muted">{line.inventory} / {stats.capacity} · {formatMoney(stats.price)} each</p>
+                  <p className="muted">
+                    {stats.free} free · {stats.held} held
+                    {stats.reserved > stats.held ? ` · ${stats.reserved - stats.held} still owed` : ''}
+                  </p>
                 </div>
               </div>
-              <strong>{formatMoney(line.inventory * stats.price)}</strong>
+              <strong>{formatMoney(stats.free * stats.price)}</strong>
             </header>
             <div className="meter"><span style={{ width: `${fill}%`, background: def.palette.tag }} /></div>
             <div className="line-actions">
-              <button type="button" className="btn btn-gold" disabled={line.inventory <= 0} onClick={() => sellLine(def.id)}>
-                Sell line
+              <button type="button" className="btn btn-gold" disabled={stats.free <= 0} onClick={() => sellLine(def.id)}>
+                {stats.free > 0 || stats.held <= 0 ? 'Sell free' : 'Held for orders'}
               </button>
               <button
                 type="button"
@@ -67,7 +76,15 @@ export default function WarehousePanel() {
                 {stats.autoReady ? 'Auto-sell' : 'Needs automation'}
               </button>
             </div>
-            {stats.stalled ? <p className="warn">This line is stalled until you make room.</p> : null}
+            {stats.stalled ? (
+              <p className="warn">
+                {stats.free <= 0 && stats.held > 0
+                  ? 'The crate is full of goods held for orders. Deliver or add racks.'
+                  : 'This line is stalled until you make room.'}
+              </p>
+            ) : stats.stocking ? (
+              <p className="muted">Stocking an order: new pieces stay in the crate until it is covered.</p>
+            ) : null}
           </article>
         );
       })}

@@ -114,7 +114,9 @@ if (state.prestige.runs < 1) throw new Error('Prestige run was not counted');
 const forks = doForklifts({ ...state, money: 10000 });
 if (deny(forks)) throw new Error('Forklift upgrade failed');
 
-state = doSellAll(run(12, createInitialState(Date.now()))).state;
+state = run(12, createInitialState(Date.now()));
+state.orders = [];
+state = doSellAll(state).state;
 if (state.money <= 0) throw new Error('Sell still works');
 
 const migrated = sanitize({ version: 1, money: 12, lines: { shoes: { unlocked: true, inventory: 3 }, watches: { unlocked: true } } });
